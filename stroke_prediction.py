@@ -22,35 +22,25 @@ import requests
 warnings.filterwarnings('ignore')
 
 class StrokePredictionInterface:
-    def __init__(self, 
-                 hf_repo_id=None, 
-                 unet_model_path=None, 
-                 ensemble_models_path=None,
-                 hf_token=None):
+    def __init__(self, model_paths):
         """
-        Initialize the prediction interface with models from Hugging Face or local
+        Initialize the prediction interface with paths to downloaded models
         
         Args:
-            hf_repo_id: Hugging Face repository ID (e.g., "username/stroke-detection")
-            unet_model_path: Local path to U-Net model (fallback if not using HF)
-            ensemble_models_path: Local path base for ensemble models (fallback)
-            hf_token: Hugging Face token (optional, for private repos)
+            model_paths: Dictionary mapping filenames to their cached local paths
         """
         print("Loading Brain Stroke Prediction Models...")
         print("="*50)
         
-        self.hf_repo_id = hf_repo_id
-        self.hf_token = hf_token
+        self.model_paths = model_paths
         
         # Load U-Net model
-        if hf_repo_id:
-            print(f"Loading U-Net model from Hugging Face: {hf_repo_id}")
-            self.unet_model = self._load_unet_from_hf()
-        elif unet_model_path:
-            print(f"Loading U-Net model from local path: {unet_model_path}")
-            self.unet_model = keras.models.load_model(unet_model_path)
-        else:
-            raise ValueError("Either hf_repo_id or unet_model_path must be provided")
+        unet_path = self.model_paths.get("best_unet_model.h5")
+        if not unet_path or not os.path.exists(unet_path):
+            raise ValueError(f"U-Net model not found at {unet_path}")
+            
+        print(f"Loading U-Net model from: {unet_path}")
+        self.unet_model = keras.models.load_model(unet_path)
         
         # Get input specifications from U-Net
         unet_input_shape = self.unet_model.input_shape
@@ -63,10 +53,7 @@ class StrokePredictionInterface:
         
         # Load ensemble models
         print("\nLoading ensemble models...")
-        if hf_repo_id:
-            self._load_ensemble_from_hf()
-        else:
-            self._load_ensemble_local(ensemble_models_path)
+        self._load_ensemble()
         
         # Check if all models are loaded
         self.models_loaded = all([
@@ -81,94 +68,32 @@ class StrokePredictionInterface:
         else:
             print("\n⚠ Some models failed to load. Predictions may not work properly.")
     
-    def _load_unet_from_hf(self):
-        """Load U-Net model from Hugging Face"""
-        try:
-            # Download model file from Hugging Face
-            model_path = "best_unet_model.h5"
-            # model_path = hf_hub_download(
-            #     repo_id=self.hf_repo_id,
-            #     filename="best_unet_model.h5",
-            #     token=self.hf_token,
-            #     cache_dir="./model_cache"
-            # )
-            print(f"✓ Downloaded U-Net model to: {model_path}")
-            
-            # Load the model
-            model = keras.models.load_model(model_path)
-            return model
-        except Exception as e:
-            print(f"✗ Error loading U-Net from Hugging Face: {e}")
-            raise
-    
-    def _load_ensemble_from_hf(self):
-        """Load ensemble models from Hugging Face"""
-        model_files = {
-            'lightgbm': 'my_stroke_ensemble_lightgbm.pkl',
-            'catboost': 'my_stroke_ensemble_catboost.pkl',
-            'adaboost': 'my_stroke_ensemble_adaboost.pkl',
+    def _load_ensemble(self):
+        """Load ensemble models from provided paths"""
+        models_to_load = {
+            'lightgbm_model': 'my_stroke_ensemble_lightgbm.pkl',
+            'catboost_model': 'my_stroke_ensemble_catboost.pkl',
+            'adaboost_model': 'my_stroke_ensemble_adaboost.pkl',
             'decision_tree_meta': 'my_stroke_ensemble_decision_tree_meta.pkl',
             'scaler': 'my_stroke_ensemble_scaler.pkl'
         }
         
-        for model_name, filename in model_files.items():
+        for attr_name, filename in models_to_load.items():
+            path = self.model_paths.get(filename)
             try:
-                # Download model file
-                model_path = hf_hub_download(
-                    repo_id=self.hf_repo_id,
-                    filename=filename,
-                    token=self.hf_token,
-                    cache_dir="./model_cache"
-                )
+                if not path or not os.path.exists(path):
+                    raise FileNotFoundError(f"File {filename} not found in model paths.")
                 
-                # Load the model
-                model = joblib.load(model_path)
-                setattr(self, f"{model_name}_model" if model_name != 'scaler' else model_name, model)
-                print(f"✓ {model_name.replace('_', ' ').title()} loaded")
-                
+                model = joblib.load(path)
+                setattr(self, attr_name, model)
+                display_name = attr_name.replace('_model', '').replace('_', ' ').title()
+                print(f"✓ {display_name} loaded")
             except Exception as e:
-                print(f"✗ Error loading {model_name}: {e}")
-                setattr(self, f"{model_name}_model" if model_name != 'scaler' else model_name, None)
+                print(f"✗ Error loading {attr_name}: {e}")
+                setattr(self, attr_name, None)
         
         # Fallback scaler if not loaded
         if not hasattr(self, 'scaler') or self.scaler is None:
-            self.scaler = StandardScaler()
-    
-    def _load_ensemble_local(self, ensemble_models_path):
-        """Load ensemble models from local files"""
-        try:
-            self.lightgbm_model = joblib.load(f"{ensemble_models_path}_lightgbm.pkl")
-            print("✓ LightGBM model loaded")
-        except:
-            print("✗ Error loading LightGBM model")
-            self.lightgbm_model = None
-            
-        try:
-            self.catboost_model = joblib.load(f"{ensemble_models_path}_catboost.pkl")
-            print("✓ CatBoost model loaded")
-        except:
-            print("✗ Error loading CatBoost model")
-            self.catboost_model = None
-            
-        try:
-            self.adaboost_model = joblib.load(f"{ensemble_models_path}_adaboost.pkl")
-            print("✓ AdaBoost model loaded")
-        except:
-            print("✗ Error loading AdaBoost model")
-            self.adaboost_model = None
-            
-        try:
-            self.decision_tree_meta = joblib.load(f"{ensemble_models_path}_decision_tree_meta.pkl")
-            print("✓ Decision Tree meta-classifier loaded")
-        except:
-            print("✗ Error loading Decision Tree meta-classifier")
-            self.decision_tree_meta = None
-            
-        try:
-            self.scaler = joblib.load(f"{ensemble_models_path}_scaler.pkl")
-            print("✓ Feature scaler loaded")
-        except:
-            print("✗ Error loading feature scaler")
             self.scaler = StandardScaler()
     
     def preprocess_image(self, image_path):
@@ -409,27 +334,36 @@ def main():
     """
     Main function demonstrating how to use the prediction interface with Hugging Face
     """
-    # Initialize with Hugging Face repo
-    predictor = StrokePredictionInterface(
-        hf_repo_id="Sharvarihk/CNNBasedBrainStrokeDetection",  # Replace with your HF repo
-        token = os.getenv("HF_TOKEN") # Add token if private repo
-    )
+    from download_model import download_models
     
-    # Example: Predict on a single image
-    print("\n" + "="*50)
-    print("SINGLE IMAGE PREDICTION")
-    print("="*50)
-    
-    single_image_path = "test_image.jpg"
-    if os.path.exists(single_image_path):
-        result = predictor.predict_single_image(single_image_path)
+    # 1. Download models first
+    repo_id = "saishhh/brain-stroke-model"  # Replace with your HF repo if different
+    try:
+        model_paths = download_models(repo_id=repo_id)
         
-        if "error" not in result:
-            print(f"Image: {os.path.basename(result['image_path'])}")
-            print(f"Prediction: {result['prediction_label']}")
-            print(f"Stroke Probability: {result['stroke_probability']:.3f}")
+        # 2. Initialize predictor with the downloaded paths
+        predictor = StrokePredictionInterface(model_paths=model_paths)
+        
+        # Example: Predict on a single image
+        print("\n" + "="*50)
+        print("SINGLE IMAGE PREDICTION")
+        print("="*50)
+        
+        single_image_path = "test_image.jpg"
+        if os.path.exists(single_image_path):
+            result = predictor.predict_single_image(single_image_path)
+            
+            if "error" not in result:
+                print(f"Image: {os.path.basename(result['image_path'])}")
+                print(f"Prediction: {result['prediction_label']}")
+                print(f"Stroke Probability: {result['stroke_probability']:.3f}")
+            else:
+                print(f"Error: {result['error']}")
         else:
-            print(f"Error: {result['error']}")
+            print(f"Test image '{single_image_path}' not found for demonstration.")
+            
+    except Exception as e:
+        print(f"Failed to run demonstration: {e}")
 
 if __name__ == "__main__":
     main()

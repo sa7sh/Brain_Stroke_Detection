@@ -1,56 +1,50 @@
-"""
-Download best_unet_model.h5 from Hugging Face
-Run this to get the missing model file
-"""
-
-from huggingface_hub import hf_hub_download
 import os
-import shutil
+from huggingface_hub import hf_hub_download
 
-print("=" * 70)
-print("Downloading UNet Model from Hugging Face...")
-print("=" * 70)
+# Default Hugging Face repository ID
+DEFAULT_REPO_ID = "saishhh/brain-stroke-model"
+# Directory to cache the downloaded models
+CACHE_DIR = "model_cache"
 
-try:
-    # Download from Hugging Face
-    print("\n📥 Downloading from: Sharvarihk/CNNBasedBrainStrokeDetection")
-    print("⏳ This may take 1-2 minutes depending on your connection...")
+FILES_TO_DOWNLOAD = [
+    "best_unet_model.h5",
+    "my_stroke_ensemble_lightgbm.pkl",
+    "my_stroke_ensemble_catboost.pkl",
+    "my_stroke_ensemble_adaboost.pkl",
+    "my_stroke_ensemble_decision_tree_meta.pkl",
+    "my_stroke_ensemble_scaler.pkl"
+]
+
+def download_models(repo_id=DEFAULT_REPO_ID, cache_dir=CACHE_DIR):
+    """
+    Downloads required model files from Hugging Face and caches them locally.
+    Returns a dictionary mapping filenames to their absolute cached paths.
+    """
+    print(f"Checking models from Hugging Face repository: {repo_id}")
+    os.makedirs(cache_dir, exist_ok=True)
     
-    downloaded_path = hf_hub_download(
-        repo_id="Sharvarihk/CNNBasedBrainStrokeDetection",
-        filename="best_unet_model.h5",
-        local_dir=".",  # Download to current directory
-        local_dir_use_symlinks=False  # Don't use symlinks on Windows
-    )
-    
-    print(f"\n✅ Downloaded to: {downloaded_path}")
-    
-    # Check if file exists
-    if os.path.exists("best_unet_model.h5"):
-        file_size = os.path.getsize("best_unet_model.h5") / (1024 * 1024)  # MB
-        print(f"✅ File verified: best_unet_model.h5 ({file_size:.2f} MB)")
-        print("\n" + "=" * 70)
-        print("🎉 SUCCESS! Model downloaded successfully!")
-        print("=" * 70)
-        print("\nNext step: Run the app:")
-        print("   python app.py")
-        print("=" * 70)
-    else:
-        print("\n⚠️ File downloaded but not found in current directory")
-        print(f"File is at: {downloaded_path}")
-        print("Copying to current directory...")
-        
-        if os.path.exists(downloaded_path):
-            shutil.copy2(downloaded_path, "best_unet_model.h5")
-            print("✅ Copied successfully!")
-        
-except Exception as e:
-    print(f"\n❌ Error downloading model: {e}")
-    print("\n" + "=" * 70)
-    print("Alternative: Download manually")
+    downloaded_paths = {}
+    for filename in FILES_TO_DOWNLOAD:
+        print(f"Ensuring {filename} is available...")
+        try:
+            # hf_hub_download automatically handles caching. It only downloads 
+            # if the file isn't already cached or if there's a new version.
+            path = hf_hub_download(
+                repo_id=repo_id,
+                filename=filename,
+                cache_dir=cache_dir
+            )
+            downloaded_paths[filename] = path
+            print(f"  -> Ready: {path}")
+        except Exception as e:
+            print(f"  -> Error downloading {filename}: {e}")
+            raise
+            
+    print("All required models are successfully downloaded and cached!")
+    return downloaded_paths
+
+if __name__ == "__main__":
     print("=" * 70)
-    print("1. Go to: https://huggingface.co/Sharvarihk/CNNBasedBrainStrokeDetection")
-    print("2. Find 'Files and versions' tab")
-    print("3. Download 'best_unet_model.h5'")
-    print("4. Save it to: C:\\Users\\4DiN\\Desktop\\Brain_Stroke_Detection\\")
+    print("Downloading Brain Stroke Detection Models")
     print("=" * 70)
+    download_models()
