@@ -1,0 +1,1 @@
+An AI-based system for early stroke detection using CT scans. It uses an ensemble approach to combine multiple predictions for higher accuracy and reliability. The model is evaluated with standard metrics and assists in medical treatment.
